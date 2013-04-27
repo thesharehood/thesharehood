@@ -1,7 +1,7 @@
 thesharehood
 ============
 
-This repo is the source code for the neighbourhood sharing website at
+This repository is the source code for the neighbourhood sharing website at
 [http://thesharehood.org](http://thesharehood.org).
 
 thesharehood is a Drupal application, and is provided under the AGPLv3
