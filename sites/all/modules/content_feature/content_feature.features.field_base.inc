@@ -39,54 +39,65 @@ function content_feature_field_default_field_bases() {
     'type' => 'text_with_summary',
   );
 
-  // Exported field_base: 'field_country'
-  $field_bases['field_country'] = array(
+  // Exported field_base: 'comment_body'
+  $field_bases['comment_body'] = array(
     'active' => 1,
     'cardinality' => 1,
     'deleted' => 0,
-    'entity_types' => array(),
-    'field_name' => 'field_country',
-    'foreign keys' => array(),
+    'entity_types' => array(
+      0 => 'comment',
+    ),
+    'field_name' => 'comment_body',
+    'foreign keys' => array(
+      'format' => array(
+        'columns' => array(
+          'format' => 'format',
+        ),
+        'table' => 'filter_format',
+      ),
+    ),
     'indexes' => array(
-      'iso2' => array(
-        0 => 'iso2',
+      'format' => array(
+        0 => 'format',
       ),
     ),
     'locked' => 0,
-    'module' => 'countries',
+    'module' => 'text',
     'settings' => array(),
     'translatable' => 0,
-    'type' => 'country',
+    'type' => 'text_long',
   );
 
-  // Exported field_base: 'field_date'
-  $field_bases['field_date'] = array(
+  // Exported field_base: 'field_address'
+  $field_bases['field_address'] = array(
     'active' => 1,
     'cardinality' => 1,
     'deleted' => 0,
     'entity_types' => array(),
-    'field_name' => 'field_date',
+    'field_name' => 'field_address',
     'foreign keys' => array(),
     'indexes' => array(),
     'locked' => 0,
-    'module' => 'date',
-    'settings' => array(
-      'cache_count' => 4,
-      'cache_enabled' => 0,
-      'granularity' => array(
-        'day' => 'day',
-        'hour' => 'hour',
-        'minute' => 'minute',
-        'month' => 'month',
-        'second' => 0,
-        'year' => 'year',
-      ),
-      'timezone_db' => 'UTC',
-      'todate' => '',
-      'tz_handling' => 'site',
-    ),
+    'module' => 'addressfield',
+    'settings' => array(),
     'translatable' => 0,
-    'type' => 'datetime',
+    'type' => 'addressfield',
+  );
+
+  // Exported field_base: 'field_coordinates'
+  $field_bases['field_coordinates'] = array(
+    'active' => 1,
+    'cardinality' => 1,
+    'deleted' => 0,
+    'entity_types' => array(),
+    'field_name' => 'field_coordinates',
+    'foreign keys' => array(),
+    'indexes' => array(),
+    'locked' => 0,
+    'module' => 'geofield',
+    'settings' => array(),
+    'translatable' => 0,
+    'type' => 'geofield',
   );
 
   // Exported field_base: 'field_email_address'
@@ -190,44 +201,34 @@ function content_feature_field_default_field_bases() {
     'type' => 'number_integer',
   );
 
-  // Exported field_base: 'field_latitude'
-  $field_bases['field_latitude'] = array(
+  // Exported field_base: 'field_image'
+  $field_bases['field_image'] = array(
     'active' => 1,
     'cardinality' => 1,
     'deleted' => 0,
     'entity_types' => array(),
-    'field_name' => 'field_latitude',
-    'foreign keys' => array(),
-    'indexes' => array(),
+    'field_name' => 'field_image',
+    'foreign keys' => array(
+      'fid' => array(
+        'columns' => array(
+          'fid' => 'fid',
+        ),
+        'table' => 'file_managed',
+      ),
+    ),
+    'indexes' => array(
+      'fid' => array(
+        0 => 'fid',
+      ),
+    ),
     'locked' => 0,
-    'module' => 'number',
+    'module' => 'image',
     'settings' => array(
-      'decimal_separator' => '.',
-      'precision' => 15,
-      'scale' => 10,
+      'default_image' => FALSE,
+      'uri_scheme' => 'public',
     ),
     'translatable' => 0,
-    'type' => 'number_decimal',
-  );
-
-  // Exported field_base: 'field_longitude'
-  $field_bases['field_longitude'] = array(
-    'active' => 1,
-    'cardinality' => 1,
-    'deleted' => 0,
-    'entity_types' => array(),
-    'field_name' => 'field_longitude',
-    'foreign keys' => array(),
-    'indexes' => array(),
-    'locked' => 0,
-    'module' => 'number',
-    'settings' => array(
-      'decimal_separator' => '.',
-      'precision' => 15,
-      'scale' => 10,
-    ),
-    'translatable' => 0,
-    'type' => 'number_decimal',
+    'type' => 'image',
   );
 
   // Exported field_base: 'field_phone_number'
@@ -259,33 +260,64 @@ function content_feature_field_default_field_bases() {
     'type' => 'text',
   );
 
-  // Exported field_base: 'field_postcode'
-  $field_bases['field_postcode'] = array(
+  // Exported field_base: 'field_remember_me'
+  $field_bases['field_remember_me'] = array(
     'active' => 1,
     'cardinality' => 1,
     'deleted' => 0,
     'entity_types' => array(),
-    'field_name' => 'field_postcode',
-    'foreign keys' => array(
-      'format' => array(
-        'columns' => array(
-          'format' => 'format',
-        ),
-        'table' => 'filter_format',
-      ),
-    ),
+    'field_name' => 'field_remember_me',
+    'foreign keys' => array(),
     'indexes' => array(
-      'format' => array(
-        0 => 'format',
+      'value' => array(
+        0 => 'value',
       ),
     ),
     'locked' => 0,
-    'module' => 'text',
+    'module' => 'list',
     'settings' => array(
-      'max_length' => 32,
+      'allowed_values' => array(
+        0 => '',
+        1 => '',
+      ),
+      'allowed_values_function' => '',
     ),
     'translatable' => 0,
-    'type' => 'text',
+    'type' => 'list_boolean',
+  );
+
+  // Exported field_base: 'field_tags'
+  $field_bases['field_tags'] = array(
+    'active' => 1,
+    'cardinality' => -1,
+    'deleted' => 0,
+    'entity_types' => array(),
+    'field_name' => 'field_tags',
+    'foreign keys' => array(
+      'tid' => array(
+        'columns' => array(
+          'tid' => 'tid',
+        ),
+        'table' => 'taxonomy_term_data',
+      ),
+    ),
+    'indexes' => array(
+      'tid' => array(
+        0 => 'tid',
+      ),
+    ),
+    'locked' => 0,
+    'module' => 'taxonomy',
+    'settings' => array(
+      'allowed_values' => array(
+        0 => array(
+          'vocabulary' => 'tags',
+          'parent' => 0,
+        ),
+      ),
+    ),
+    'translatable' => 0,
+    'type' => 'taxonomy_term_reference',
   );
 
   // Exported field_base: 'field_type_of_shareable'

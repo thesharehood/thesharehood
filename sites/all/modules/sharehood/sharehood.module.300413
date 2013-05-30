@@ -1,0 +1,160 @@
+<?php
+
+function sharehood_init() {
+  // check to see if our sharehood cookie exists and use it to set session variables
+  if(isset($_COOKIE['Drupal_visitor_sharehood_postal_code'])) {
+    $_SESSION['sharehood_location_data'] = array(
+        'sharehood_postal_code'=>$_COOKIE['Drupal_visitor_sharehood_postal_code'],
+        'sharehood_country'=>$_COOKIE['Drupal_visitor_sharehood_country'],
+        'sharehood_latitude'=>$_COOKIE['Drupal_visitor_sharehood_latitude'],
+        'sharehood_longitude'=>$_COOKIE['Drupal_visitor_sharehood_longitude']
+        );
+  }
+}
+
+/**
+ *Implements hook_form_alter
+
+ Hide the various fields we don't want to show on the various forms...
+ location_node_form, search_block_form, search_form, shareable_node_form, community_post_node_form, mailchimp_lists_user_subscribe_form_sharehood_newsletter
+ REMOVE: tell_us_where_you_live_entityform_edit_form
+*/
+function sharehood_form_alter(&$form, $form_state, $form_id) {
+  //remove field for public addres, it is populated automatically
+  dpm($form);
+  //var_dump($form_state);
+
+  if ($form_id === 'location_node_form') {
+    //turn title off but set a value as its required
+    $form['title']['#access'] = FALSE;
+    $form['title']['#value'] = "Sharehood location node";
+  } elseif ($form_id === 'mailchimp_lists_user_subscribe_form_sharehood_newsletter') {
+    // wanted to remove first and last name fields
+    //dpm($form);
+    //dpm($form_state);
+  } elseif ($form_id === 'shareable_node_form') {
+    //dpm($form);
+    $form['field_expiry_date_timestamp']['#access'] = FALSE;
+  } elseif ($form_id === 'location_node_form' ) {
+    dmp($form);
+    dpm($_SESSION['sharehood_location_data']);
+    // check if session variables set and preset form if so:
+    if(isset($_SESSION['sharehood_location_data'])) {
+      dpm($form['field_address']);
+      $form['field_address']['und'][0]['#address']['postal_code'] = $_SESSION['sharehood_location_data']['sharehood_postal_code'];
+      $form['field_address']['und'][0]['#address']['country'] = $_SESSION['sharehood_location_data']['sharehood_country'];
+    }
+  }
+}
+
+// validate stuff after form submission but before saving...
+function sharehood_node_validate($node, $form, &$form_state) {
+  if($node->type == 'shareable' || $node->type == 'community-post') {
+    if(!isset($_SESSION['sharehood_location_data'])) {
+      /*
+      dpm($_SESSION['sharehood_location_data']);
+      dpm($_COOKIE['Drupal_visitor_sharehood_postal_code']);
+      dpm($_COOKIE['Drupal_visitor_sharehood_country']);
+      dpm($_COOKIE['Drupal_visitor_sharehood_latitude']);
+      dpm($_COOKIE['Drupal_visitor_sharehood_longitude']);
+      */
+      // this needs a field type (or something) in the first parameter
+      form_set_error('field_your_first_name', 'You MUST set your postcode and country below before posting a shareable or a community post.');
+    }
+  }
+
+}
+
+function sharehood_node_presave($node) {
+  //dpm($node);
+  if($node->type == 'location') {
+    //dpm($node);
+    // set session variables
+    if(!isset($_SESSION['sharehood_location_data'])) {
+      $_SESSION['sharehood_location_data'] = array(
+        'sharehood_postal_code'=>$node->field_address['und'][0]['postal_code'],
+        'sharehood_country'=>$node->field_address['und'][0]['country'],
+        'sharehood_latitude'=>$node->field_coordinates['und'][0]['lat'],
+        'sharehood_longitude'=>$node->field_coordinates['und'][0]['lon']
+        );
+    }
+    if($node->field_remember_me['und'][0]['value'] == TRUE) {
+      //set cookie
+      user_cookie_save(array(
+        'sharehood_postal_code'=>$node->field_address['und'][0]['postal_code'],
+        'sharehood_country'=>$node->field_address['und'][0]['country'],
+        'sharehood_latitude'=>$node->field_coordinates['und'][0]['lat'],
+        'sharehood_longitude'=>$node->field_coordinates['und'][0]['lon']
+        ));
+      //user_cookie_save(array('key'=>'value'));
+      //print $_COOKIE['Drupal_visitor_key'];
+    }
+  }
+
+  if($node->type == 'shareable') {
+    dpm($_SESSION['sharehood_location_data']);
+    dpm($_COOKIE['Drupal_visitor_sharehood_postal_code']);
+    dpm($_COOKIE['Drupal_visitor_sharehood_country']);
+    dpm($_COOKIE['Drupal_visitor_sharehood_latitude']);
+    dpm($_COOKIE['Drupal_visitor_sharehood_longitude']);
+
+   // set expiry date
+   $now = time();
+   switch ($node->field_expiry_date['und'][0]['value']) {
+    case 'five-years':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(157680000+$now));
+    break;
+    case 'two-years':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(63072000+$now));
+    break;
+    case 'one-year':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(31536000+$now));
+    break;
+    case 'six-months':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(15768000+$now));
+    break;
+    case 'two-months':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(5256000+$now));
+    break;
+    case 'one-month':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(2628000+$now));
+    break;
+   }
+  }
+
+  if($node->type == 'shareable' || $node->type == 'community-post') {
+  //check if user exists - create if not, set uid if so
+  /*$result = db_select('users', 'u')
+     ->fields('u')
+     ->condition('mail', $node->field_email_address['und'][0]['value'],'=')
+     ->execute(); 
+     */
+    $result = db_query('SELECT u.mail, u.uid FROM {users} u WHERE u.mail = :mail', array(':mail' => $node->field_email_address['und'][0]['value']));
+    //dpm($result);
+    if(count($result)){
+      // the user exists!
+      foreach ($result as $record) {
+        //user_load($record->uid);
+
+        //set the uid of the node
+
+      }
+    } else {
+      // create user
+      $account->is_new = TRUE;
+      //user_save($account, $edit);
+    }
+
+    // set country and postcode
+    //maybe this needs to be set in the user?
+    //$node->field_address['und'][0]['postal_code'] = $_SESSION['Sharehood_Postal_Code'];
+    //$node->field_address['und'][0]['country'] = $_SESSION['Sharehood_Country'];
+    // do I neeed to save lat and long here as well?
+  }
+
+  return $node;
+}
+
+
+
+?>

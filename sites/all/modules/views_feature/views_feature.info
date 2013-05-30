@@ -1,0 +1,10 @@
+name = Views Feature
+core = 7.x
+package = Features
+dependencies[] = views
+dependencies[] = views_content
+features[ctools][] = views:views_default:3.0
+features[features_api][] = api:1
+features[views_view][] = browse_noticeboard
+features[views_view][] = sharing
+features_exclude[dependencies][ctools] = ctools

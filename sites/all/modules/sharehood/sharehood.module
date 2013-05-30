@@ -1,3 +1,565 @@
 <?php
 
+// these are how far in metres we put  for close
+define('SHAREHOOD_VERY_CLOSE', 2000);
+define('SHAREHOOD_CLOSE', 50000);
+
+/*
+These session variables and cookies are used to track the all important location data:
+
+      $_SESSION['sharehood_location_data'];
+      $_SESSION['sharehood_location_data']['sharehood_postal_code'];
+      $_SESSION['sharehood_location_data']['sharehood_suburb'];
+      $_SESSION['sharehood_location_data']['sharehood_country'];
+      $_SESSION['sharehood_location_data']['sharehood_latitude'];
+      $_SESSION['sharehood_location_data']['sharehood_longitude'];
+      $_COOKIE['Drupal_visitor_sharehood_postal_code'];
+      $_COOKIE['Drupal_visitor_sharehood_suburb'];
+      $_COOKIE['Drupal_visitor_sharehood_country'];
+      $_COOKIE['Drupal_visitor_sharehood_latitude'];
+      $_COOKIE['Drupal_visitor_sharehood_longitude'];
+*/
+
+
+function sharehood_init() {
+  // check to see if our sharehood cookie exists and use it to set session variables
+  if(isset($_COOKIE['Drupal_visitor_sharehood_postal_code'])) {
+    $_SESSION['sharehood_location_data'] = array(
+        'sharehood_postal_code'=>$_COOKIE['Drupal_visitor_sharehood_postal_code'],
+        'sharehood_suburb'=>$_COOKIE['Drupal_visitor_sharehood_suburb'],
+        'sharehood_country'=>$_COOKIE['Drupal_visitor_sharehood_country'],
+        'sharehood_latitude'=>$_COOKIE['Drupal_visitor_sharehood_latitude'],
+        'sharehood_longitude'=>$_COOKIE['Drupal_visitor_sharehood_longitude']
+        );
+  }
+}
+
+function sharehood_menu() {
+  $items['close-to-me'] = array(
+     'title' => 'Browse shareables or community posts',
+     'page callback' => 'sharehood_page_close_to_me',
+     'access arguments' => array('access content'),
+     'type' => MENU_CALLBACK,
+     );
+  $items['delete-spam'] = array(
+     'title' => 'Delete Spam!',
+     'page callback' => 'sharehood_delete_spam',
+     'access arguments' => array('access content'),
+     'type' => MENU_CALLBACK,
+     );
+  return $items;
+}
+
+function sharehood_delete_spam($uid) {
+  $output = "";
+
+
+  $user = user_load($uid);
+  //$user = user_load($node->uid);
+  $sql = "SELECT u.mail FROM {users} u 
+      INNER JOIN {field_data_field_coordinates} fdfc ON fdfc.entity_id = u.uid 
+      WHERE fdfc.entity_type = 'user' AND
+      fdfc.field_coordinates_lat > :lat_min AND fdfc.field_coordinates_lat < :lat_max AND 
+      fdfc.field_coordinates_lon > :lon_min AND fdfc.field_coordinates_lon < :lon_max";
+
+  $lat = $user->field_coordinates['und'][0]['lat'];
+  $long = $user->field_coordinates['und'][0]['lon'];
+  // work out how far is close
+  // 1 deg of lat is always about 110,574 m, so del_lat is:
+  $del_lat = 2000/110574;
+  // but 1 deg of long depends on where you are on the earth
+  $del_lon = $del_lat/cos(0.017453292519943*$lat);
+  $lat_min = $lat - $del_lat;
+  $lat_max = $lat + $del_lat;
+  $lon_min = $long - $del_lon;
+  $lon_max = $long + $del_lon;
+
+  // query of all users content within these limits
+  $result = db_query($sql, array(':lat_min' => $lat_min, ':lat_max' => $lat_max, ':lon_min' => $lon_min, ':lon_max' => $lon_max) );
+  $emails = "";
+  foreach ($result as $record) {
+    $emails .= $record->mail.", ";
+  }
+  echo $emails;
+
+  /*
+    $result = db_query("SELECT u.uid FROM {users} u");
+    foreach ($result as $record) {
+      if(!$record){
+        continue;
+      }
+      $user = user_load($record->uid);
+      dpm($user);
+      break;
+    }
+    $output = 'hello';
+    $result = db_query("SELECT n.nid, n.title, n.uid FROM {node} n WHERE (n.type = :type OR n.type = :type2) AND n.uid = 0", array(':type' => 'shareable', ':type2' => 'community_post'));
+    foreach ($result as $record) {
+      $row[] = array($record->title, l('delete',"node/$record->nid/delete"));
+      //node_delete($record->nid);
+    }
+
+  $header = array("Name", "delete");
+  $output = theme_table(array('header' => $header, 'rows' => $row, 'attributes' => array(), 'caption' => '', 'colgroups' => array(), 'sticky' => TRUE, 'empty' => 'no results'));
+  */
+  return $output;
+
+}
+
+// move to field to BCC field
+function sharehood_mail_alter(&$message) {
+  $message['headers']['Bcc'] = $message['to'];
+  $message['to'] = 'noreply@thesharehood.org';
+}
+
+function sharehood_view_compare($row1, $row2) {
+  //print_r($row1);
+  /*
+  $long_lat_set = isset( $_SESSION['sharehood_location_data']['sharehood_latitude'] ) && 
+    isset( $_SESSION['sharehood_location_data']['sharehood_longitude']);
+  if(isset($long_lat_set)) {
+    $lat = $_SESSION['sharehood_location_data']['sharehood_latitude'];
+    $lon = $_SESSION['sharehood_location_data']['sharehood_longitude'];
+    $pieces1 = explode(",", $row1->field_coordinates);
+    $pieces2 = explode(",", $row2->field_coordinates);
+    $dist1 = abs($lat - $piece1[0]) + abs($lon - $piece1[1]);
+    $dist2 = abs($lat - $piece2[0]) + abs($lon - $piece2[1]);
+    if($dist1<$dist2) {
+      return -1;
+    } else {
+      return 1;
+    }
+  } else {
+    return 0;
+  }
+  */
+  return 0;
+}
+
+function sharehood_type_image($type) {
+ return "<img align=left style='padding-right:10px' width=60px src=/sites/all/modules/sharehood/categories/$type.jpg>";
+}
+
+
+// if this is called form the block limit the results and add a more link
+function sharehood_page_close_to_me($type = '', $block_limit = 0) {
+  $typename = 'shareables';
+  $linkpage = 'shareable';
+  if ($type == 'community-post' ) {
+    $type = 'community_post';
+    $typename = 'community posts';
+    $linkpage = 'community-post';
+    $sql = "SELECT n.nid, n.title, n.uid, u.name, fdfa.field_address_locality AS locality FROM {node} n 
+      INNER JOIN {field_data_field_coordinates} fdfc ON fdfc.entity_id = n.uid 
+      INNER JOIN {field_data_field_address} fdfa ON fdfa.entity_id = n.uid 
+      INNER JOIN {users} u ON u.uid = n.uid
+      WHERE fdfc.entity_type = 'user' AND fdfa.entity_type = 'user' AND n.type = :type AND n.status = 1 AND
+      fdfc.field_coordinates_lat > :lat_min AND fdfc.field_coordinates_lat < :lat_max AND 
+      fdfc.field_coordinates_lon > :lon_min AND fdfc.field_coordinates_lon < :lon_max ORDER BY n.created DESC";
+    $random_sql = "SELECT n.nid, n.title, n.uid, u.name, fdfa.field_address_locality AS locality FROM {node} n 
+      INNER JOIN {field_data_field_address} fdfa ON fdfa.entity_id = n.uid
+      INNER JOIN {users} u ON u.uid = n.uid
+      WHERE n.type = :type AND n.status = 1 AND fdfa.entity_type = 'user' ORDER BY n.created DESC";
+  } elseif ($type == 'shareable' ) {
+  // construct query of all users content within lat, long limits
+     $sql = "SELECT n.nid, n.title, n.uid, u.name, fdfa.field_address_locality AS locality, fdftos.field_type_of_shareable_value AS type FROM {node} n 
+    INNER JOIN {field_data_field_coordinates} fdfc ON fdfc.entity_id = n.uid 
+    INNER JOIN {field_data_field_address} fdfa ON fdfa.entity_id = n.uid 
+    INNER JOIN {field_data_field_type_of_shareable} fdftos ON fdftos.entity_id = n.nid 
+    INNER JOIN {users} u ON u.uid = n.uid
+    WHERE fdfc.entity_type = 'user' AND fdfa.entity_type = 'user' AND n.type = :type AND n.status = 1 AND
+    fdfc.field_coordinates_lat > :lat_min AND fdfc.field_coordinates_lat < :lat_max AND 
+    fdfc.field_coordinates_lon > :lon_min AND fdfc.field_coordinates_lon < :lon_max ORDER BY n.created DESC";
+     $random_sql = "SELECT n.nid, n.title, n.uid, u.name, fdfa.field_address_locality AS locality, fdftos.field_type_of_shareable_value AS type FROM {node} n 
+      INNER JOIN {field_data_field_address} fdfa ON fdfa.entity_id = n.uid
+      INNER JOIN {field_data_field_type_of_shareable} fdftos ON fdftos.entity_id = n.nid 
+      INNER JOIN {users} u ON u.uid = n.uid
+      WHERE n.type = :type AND n.status = 1 AND fdfa.entity_type = 'user' ORDER BY n.created DESC";
+  } else {
+    return 'This page does nothing!';
+  }
+
+  if ($block_limit) {
+    $sql .= " LIMIT 0, $block_limit";
+  }
+  $row = array();
+  $long_lat_set = isset( $_SESSION['sharehood_location_data']['sharehood_latitude'] ) && 
+    isset( $_SESSION['sharehood_location_data']['sharehood_longitude']);
+  $num_results = 0;
+
+  if ( $long_lat_set ) {
+    // we have a location set
+    $lat = $_SESSION['sharehood_location_data']['sharehood_latitude'];
+    $long = $_SESSION['sharehood_location_data']['sharehood_longitude'];
+    // work out how far is close
+    // 1 deg of lat is always about 110,574 m, so del_lat is:
+    $del_lat = SHAREHOOD_VERY_CLOSE/110574;
+    // but 1 deg of long depends on where you are on the earth
+    $del_lon = $del_lat/cos(0.017453292519943*$lat);
+    $lat_min = $lat - $del_lat;
+    $lat_max = $lat + $del_lat;
+    $lon_min = $long - $del_lon;
+    $lon_max = $long + $del_lon;
+    // query of all users content within these limits
+    $result = db_query($sql, array(':type' => $type, ':lat_min' => $lat_min, ':lat_max' => $lat_max, ':lon_min' => $lon_min, ':lon_max' => $lon_max) );
+    $num_results = $result->rowCount();
+    foreach ($result as $record) {
+      $img = ($type == 'shareable' ? sharehood_type_image($record->type) : "");
+      $row[$record->nid] = array($img.l($record->title, "node/$record->nid")." in $record->locality", l("Contact $record->name about it", "user/$record->uid/contact"));
+    }
+  }
+  // if we have few results (or if lat, long weren't set) get some random filler results:
+  // (we could check for some not so close... later!)
+  $limit = 50;
+  if($block_limit ) {
+    if ($num_results >= $block_limit) {
+      $limit = 0;
+    } else {
+      $limit = $block_limit - $num_results;
+    }
+  } else {
+    $limit = 50 - $num_results;
+  }
+
+  if ( $limit ) {
+    //$limit = 50 - $num_results;
+    $result = db_query($random_sql, array(':type' => $type));
+    foreach ($result as $record) {
+      // check that this is not already there
+      if(!isset($row[$record->nid])){ 
+        //$row[$record->nid] = array(l($record->title, "node/$record->nid"), l("Contact sharer", "user/$record->uid/contact"));
+        $img = ($type == 'shareable' ? sharehood_type_image($record->type) : "");
+        $row[$record->nid] = array($img.l($record->title, "node/$record->nid")." in $record->locality", l("Contact $record->name about it", "user/$record->uid/contact"));
+      }
+      if(count($row) > $limit) {
+        break;
+      }
+    }
+  }
+
+  $header = array("Name", "Contact sharer");
+  $header = array();
+  $output = theme_table(array('header' => $header, 'rows' => $row, 'attributes' => array(), 'caption' => '', 'colgroups' => array(), 'sticky' => TRUE, 'empty' => 'no results'));
+  if ($block_limit) {
+    $output .= l("more $typename","close-to-me/$linkpage");
+  }
+  return $output;
+}
+
+function sharehood_block_info() {
+  return array('sharehood_shareables_block' => array('info' => 'Sharehood Shareables Block'), 'sharehood_community_posts_block' => array('info' => 'Sharehood Community Posts Block'), 'sharehood_header_block' => array('info' => 'Sharehood header block'));
+}
+
+function sharehood_block_view($delta = '') {
+  if($delta == 'sharehood_shareables_block'){
+    return array('subject' => "What people are sharing today", 'content' => sharehood_page_close_to_me('shareable', 50));
+  } elseif($delta == 'sharehood_community_posts_block') {
+    return array('subject' => "Browse your community noticeboard posts", 'content' => sharehood_page_close_to_me('community-post', 5));
+  } elseif($delta == 'sharehood_header_block') {
+    $sql = "SELECT COUNT(*) AS count FROM {users}";
+    $num_users = db_query($sql)->fetchField();
+    $sql = "SELECT COUNT(*) AS count FROM {node} n WHERE n.type = 'shareable' AND n.status = 1";
+    $num_nodes = db_query($sql)->fetchField();
+    return array('subject' => "Sharehood Header", 'content' => "<h2>The Sharehood: $num_users people with $num_nodes shareables</h2>The Sharehood is all about sharing resources and getting to know people in your local area. When you set your location below you'll see local notices and the things and skills local people are willing to share with you, and you can add your own as well.  </p>We imagine a world of joyful, sustainable and resilient communities where people share locally to meet their needs and help others do the same.");
+    
+  }
+}
+
+function sharehood_user_view(&$account, $view_mode, $langcode) {
+  $account->content['field_coordinates']['#access'] = FALSE;
+  $account->content['field_address'][0]['street_block']['#access'] = FALSE;
+}
+
+/**
+ *Implements hook_form_alter
+
+ Hide the various fields we don't want to show on the various forms...
+ location_node_form, search_block_form, search_form, shareable_node_form, community_post_node_form, mailchimp_lists_user_subscribe_form_sharehood_newsletter
+*/
+function sharehood_form_alter(&$form, &$form_state, $form_id) {
+  //dpm($form);
+
+  if ($form_id === 'location_node_form') {
+    //dpm($_SESSION);
+    //turn title off but set a value as its required
+    $form['title']['#access'] = FALSE;
+    $form['title']['#value'] = "Sharehood location node";
+    $form['actions']['submit']['#value'] = "Click here to tell us where you live!";
+    // turn street etc off - leave only postcode and country
+    $form['field_address']['und'][0]['street_block']['#access'] = FALSE;
+    //$form['field_address']['und'][0]['locality_block']['locality']['#access'] = FALSE;
+    $form['field_address']['und'][0]['locality_block']['locality']['#title'] = "Suburb";
+    $form['field_address']['und'][0]['locality_block']['administrative_area']['#access'] = FALSE;
+    // check if session variables set and preset form if so:
+    if(isset($_SESSION['sharehood_location_data'])) {
+      $form['field_address']['und'][0]['#address']['postal_code'] = $_SESSION['sharehood_location_data']['sharehood_postal_code'];
+      $form['field_address']['und'][0]['#address']['locality'] = $_SESSION['sharehood_location_data']['sharehood_suburb'];
+      $form['field_address']['und'][0]['#address']['country'] = $_SESSION['sharehood_location_data']['sharehood_country'];
+    }
+    //$form_state['rebuild'] = TRUE;
+    //$form_state['redirect'] = '<front>'; // 'http://dev.thesharehood.org/';
+    //dpm($form_state);
+  } elseif ($form_id === 'mailchimp_lists_user_subscribe_form_sharehood_newsletter') {
+    // remove first and last name fields
+    //$form['mailchimp_lists']['mailchimp_sharehood_newsletter']['mergevars']['FNAME']['#access'] = FALSE;
+    $form['mailchimp_lists']['mailchimp_sharehood_newsletter']['mergevars']['LNAME']['#access'] = FALSE;
+  } elseif ($form_id === 'shareable_node_form') {
+    $form['field_expiry_date_timestamp']['#access'] = FALSE;
+  }
+}
+
+// validate stuff after form submission but before saving...
+function sharehood_node_validate($node, $form, &$form_state) {
+  if($node->type == 'shareable' || $node->type == 'community_post') {
+    $location_is_set = isset($_SESSION['sharehood_location_data']['sharehood_postal_code']) && isset($_SESSION['sharehood_location_data']['sharehood_suburb']) && isset($_SESSION['sharehood_location_data']['sharehood_country']);
+    if( !$location_is_set ) {
+    //if(!isset($_SESSION['sharehood_location_data'])) {
+      // this needs a field type (or something) in the first parameter
+      form_set_error('field_your_first_name', 'You MUST set your postcode, suburb and country below before posting a shareable or a community post.');
+    }
+  } elseif ($node->type == 'location') {
+    // we can't make the entire address field required because we only want part of it!
+    if($node->field_address['und'][0]['postal_code'] == "" || $node->field_address['und'][0]['locality'] == "") {
+      form_set_error('field_address','Suburb (or City) and Postal/Zip code is required.');
+    }
+    // but it's impossible not to set a country
+  }
+
+}
+
+function sharehood_mailchimp_subscribe_user($list, $email, $merge_vars) {
+  $long_lat_set = isset( $_SESSION['sharehood_location_data']['sharehood_latitude'] ) && 
+    isset( $_SESSION['sharehood_location_data']['sharehood_longitude']);
+  if($long_lat_set) { // add as a new user as well
+    $name = (strlen($merge_vars['FNAME']) ? $merge_vars['FNAME'] : substr($email, 0, strpos($email, '@')));
+    sharehood_add_new_user_ourselves($name, $email);
+  }
+}
+
+function sharehood_node_presave($node) {
+  //dpm($node);
+
+  if($node->type == 'location') {
+    // ALWAYS set session variables
+    //if(!isset($_SESSION['sharehood_location_data'])) {
+      $_SESSION['sharehood_location_data'] = array();
+      $_SESSION['sharehood_location_data'] = array(
+        'sharehood_postal_code'=>$node->field_address['und'][0]['postal_code'],
+        'sharehood_suburb'=>$node->field_address['und'][0]['locality'],
+        'sharehood_country'=>$node->field_address['und'][0]['country'],
+        'sharehood_latitude'=>$node->field_coordinates['und'][0]['lat'],
+        'sharehood_longitude'=>$node->field_coordinates['und'][0]['lon']
+        );
+      //dpm($_SESSION);
+    //}
+    if($node->field_remember_me['und'][0]['value'] == TRUE) {
+      //set cookie
+      user_cookie_save(array(
+        'sharehood_postal_code'=>$node->field_address['und'][0]['postal_code'],
+        'sharehood_suburb'=>$node->field_address['und'][0]['locality'],
+        'sharehood_country'=>$node->field_address['und'][0]['country'],
+        'sharehood_latitude'=>$node->field_coordinates['und'][0]['lat'],
+        'sharehood_longitude'=>$node->field_coordinates['und'][0]['lon']
+        ));
+    } else {
+      user_cookie_delete('sharehood_postal_code');
+      user_cookie_delete('sharehood_suburb');
+      user_cookie_delete('sharehood_country');
+      user_cookie_delete('sharehood_latitude');
+      user_cookie_delete('sharehood_longitude');
+    }
+  }
+
+  if($node->type == 'shareable') {
+
+   // set expiry date
+   $now = time();
+   switch ($node->field_expiry_date['und'][0]['value']) {
+    case 'five-years':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(157680000+$now));
+    break;
+    case 'two-years':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(63072000+$now));
+    break;
+    case 'one-year':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(31536000+$now));
+    break;
+    case 'six-months':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(15768000+$now));
+    break;
+    case 'two-months':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(5256000+$now));
+    break;
+    case 'one-month':
+    $node->field_expiry_date_timestamp['und'][0] = array('value'=>(2628000+$now));
+    break;
+   }
+  }
+
+  if($node->type == 'shareable' || $node->type == 'community_post') {
+    $node->uid = sharehood_add_new_user_ourselves($node->field_your_first_name['und'][0]['value'], $node->field_email_address['und'][0]['value']);
+  }
+
+  return $node;
+}
+
+// check if a user with this email and name exists, if not create one. return uid.
+function sharehood_add_new_user_ourselves($name, $email) {
+
+    //check if user exists - create if not, set uid if so
+    $result = db_query('SELECT u.mail, u.uid FROM {users} u WHERE u.mail = :mail', array(':mail' => $email));
+    if($result->rowCount()){
+      // the user exists!
+      $record = $result->fetchObject();
+      // should load user data and see if country/postcode has changed!? and then save the user data
+      //$user = user_load($record->uid);
+      //dpm($user);
+      //set the uid of the node
+      return $record->uid;
+    } else {
+      //$user = user_save($account, $edit);
+      // fuck directly with database to create a user!!!
+      // we assume this is true! dpm($_SESSION['sharehood_location_data']);
+      //$account->is_new = TRUE;
+      // we must make sure this user name is unique
+      $i = 1;
+      while(TRUE) {
+        $result = db_query('SELECT u.name FROM {users} u WHERE u.name = :name', array(':name' => $name));
+        if($result->rowCount() ==0){
+          break;
+        } //else:
+        $name = $name.$i;
+        ++$i;
+        if($i > 10000) {
+          $name = $name.rand();
+        }
+      }
+      require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+      $success1 = db_insert('users')
+        ->fields(array(
+          'name' => $name,
+          'pass' => user_hash_password(trim('sdhs56-SD34dfgFsdfjksdan4376345REFSDG')),
+          'mail' => $email, 
+          'created' => time(), 
+          //'timezone' => WHAT,
+          'init' => $email,
+          'signature_format' => 'filtered_html',
+          'data' => 'a:1:{s:7:"contact";i:1;}',
+          'status' => 1
+            ))->execute();
+      // get new uid
+      $newuid = db_query('SELECT MAX(uid) FROM {users}')->fetchField();
+      // set contact form to on
+      //set country and postcode of user
+      $shpc = $_SESSION['sharehood_location_data']['sharehood_postal_code'];
+      $shl = $_SESSION['sharehood_location_data']['sharehood_suburb'];
+      $shc = $_SESSION['sharehood_location_data']['sharehood_country'];
+      $success2 = db_insert('field_data_field_address')
+        ->fields(array(
+          'entity_type' => 'user',
+          'bundle' => 'user',
+          'entity_id' => $newuid,
+          'revision_id' => $newuid,
+          'language' => 'und',
+          'delta' => 0,
+          'field_address_country' => $shc,
+          'field_address_locality' => $shl,
+          'field_address_postal_code' => $shpc
+            ))->execute();
+      $success3 = db_insert('field_revision_field_address')
+        ->fields(array(
+          'entity_type' => 'user',
+          'bundle' => 'user',
+          'entity_id' => $newuid,
+          'revision_id' => $newuid,
+          'language' => 'und',
+          'delta' => 0,
+          'field_address_country' => $shc,
+          'field_address_locality' => $shl,
+          'field_address_postal_code' => $shpc
+            ))->execute();
+      // and lat and long  
+      $shlat = $_SESSION['sharehood_location_data']['sharehood_latitude'];
+      $shlong = $_SESSION['sharehood_location_data']['sharehood_longitude'];
+      $success4 = db_insert('field_data_field_coordinates')
+        ->fields(array(
+          'entity_type' => 'user',
+          'bundle' => 'user',
+          'entity_id' => $newuid,
+          'revision_id' => $newuid,
+          'language' => 'und',
+          'delta' => 0,
+          'field_coordinates_wkt' => "POINT ($shlong $shlat)",
+          'field_coordinates_geo_type' => 'point',
+          'field_coordinates_lat' => $shlat,
+          'field_coordinates_lon' => $shlong,
+          'field_coordinates_left' => $shlong,
+          'field_coordinates_top' => $shlat,
+          'field_coordinates_right' => $shlong,
+          'field_coordinates_bottom' => $shlat,
+          'field_coordinates_srid' => NULL
+            ))->execute();
+      $success5 = db_insert('field_revision_field_coordinates')
+        ->fields(array(
+          'entity_type' => 'user',
+          'bundle' => 'user',
+          'entity_id' => $newuid,
+          'revision_id' => $newuid,
+          'language' => 'und',
+          'delta' => 0,
+          'field_coordinates_wkt' => "POINT ($shlong $shlat)",
+          'field_coordinates_geo_type' => 'point',
+          'field_coordinates_lat' => $shlat,
+          'field_coordinates_lon' => $shlong,
+          'field_coordinates_left' => $shlong,
+          'field_coordinates_top' => $shlat,
+          'field_coordinates_right' => $shlong,
+          'field_coordinates_bottom' => $shlat,
+          'field_coordinates_srid' => NULL
+            ))->execute();
+      /*
+      dpm($success1);
+      dpm($success2);
+      dpm($success3);
+      dpm($success4);
+      dpm($success5);
+      */
+      // then we have to set up content subscriptions
+
+      return $newuid;
+    }
+
+}
+
+
+
+function sharehood_modify_search_results(&$results){ //order the results by distance
+  $long_lat_set = isset( $_SESSION['sharehood_location_data']['sharehood_latitude'] ) && 
+    isset( $_SESSION['sharehood_location_data']['sharehood_longitude']);
+  
+  if ($long_lat_set) {
+    $lat = $_SESSION['sharehood_location_data']['sharehood_latitude'];
+    $lon = $_SESSION['sharehood_location_data']['sharehood_longitude'];
+
+    $dist = array();
+    $filtered_results = array();
+    foreach ( $results as &$result ) {
+      $uid = $result['node']->uid;
+
+      // get lat, lon of this uid
+      $sql_result = db_query("SELECT fdfc.field_coordinates_lat AS lat, fdfc.field_coordinates_lon AS lon FROM {field_data_field_coordinates} fdfc WHERE fdfc.entity_type = 'user' AND fdfc.entity_id = :uid", array(':uid' => $uid))->fetchObject();
+
+      // calculate a distance (not true distance but it'll work anyway)
+      $dist[] = abs($lat - $sql_result->lat) + abs($lon - $sql_result->lon);
+  
+      $result['dist'] = end($dist);  //add the distance to each result
+      $filtered_results[] = $result;
+ 
+    }
+    $results = $filtered_results;
+    array_multisort($dist, $results);
+  }
+
+}
+
 ?>
